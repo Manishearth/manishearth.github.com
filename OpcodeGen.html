@@ -1,0 +1,999 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+
+
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Opcode Generator</title>
+<style>
+#dispTable {
+  border-collapse: collapse;
+}
+#dispTable td {
+  border: 1px solid black;
+}
+#dispTable th{
+border-left:1px solid black;
+border right:1px solid black
+}
+#dispTable tr:first-child th {
+  border-top: 0;
+}
+#dispTable tr:last-child td {
+  border-bottom: 0;
+}
+#dispTable tr td:first-child,#container table tr th:first-child {
+  border-left: 0;
+}
+#dispTable tr td:last-child,
+#dispTable tr th:last-child {
+  border-right: 0;
+}
+a{text-decoration:none;}
+a:hover{text-decoration:underline;}
+</style>
+</head><body onload='getData("NOP")'>
+Visit <a href="http://toolserver.org/%7Emanishearth/opcode.html">this 
+page</a> for the older (stable) version.<br>
+<script>
+var undoc=true; //Undocumented instructions. Work in 8080 and 8085 but not 8086.	
+var askpass=false;
+var pd="Call Me Ishmael";
+var passtext="Password please.\nIf you do not know the password, tell Manish that he is God about 10^100 times and he may deign to divulge it to you\n\nPassword hint: Correct this sentence and retype it: 'Call me Ahab'";
+var startAddr="D000"
+var arrow="\u2190"
+var dblarrow="\u2194";
+function getData(a){
+	var label="";
+	var cmt="";
+	if(a.indexOf(";")!=-1){
+		for(i=1;i<a.split(";").length;i++){
+			cmt+=";"+a.split(";")[i];
+		}
+		a=a.split(";")[0]
+		if(cmt.indexOf("%%format(")!=-1){
+				formatters=cmt.match(/%%format([^\)]*)/)[0].replace("%%format(","").split(",")
+				cmt=cmt.replace(/%%format\([^\)]*\)/,"");
+				fnames=[]
+				fvals=[]
+				cm=0;
+			for(s in formatters){
+				try{
+				fnames[cm]=formatters[s].split("=")[0];
+				fvals[cm]=formatters[s].split("=")[1];
+				cm++
+				}catch(e){}
+			}
+			if(fnames.indexOf("semicolon")!=-1){
+				val=fvals[fnames.indexOf("semicolon")];
+				if(val=="none"){
+					cmt=cmt.replace(/\;/ig,"")
+				}else if(val="exceptfirst"){
+					cmt=cmt.replace(/\;/i,"")
+				}
+			}
+			if(fnames.indexOf("style")!=-1){
+				cmt="<span style=\""+fvals[fnames.indexOf("style")]+"\">"+cmt+"</span>"
+			}
+			if(fnames.indexOf("killrest")!=-1){
+				var ret={
+				opcode:[],
+				comment:cmt,
+				mnemonic: "",
+				space:0,
+				error:"",
+				warning:"",
+				label: label.toUpperCase(),
+				reqLabel:""
+				}
+				return ret;
+			}
+
+		}
+	}
+	if(a.split(":").length>1){
+		label=a.split(":")[0]
+		a=a.split(":")[1]
+	}
+	var mnem=a.split(" ")[0].toUpperCase();
+
+
+	var detail="";
+	for(i=1;i<a.split(" ").length;i++){
+		detail+= a.split(" ")[i].toUpperCase()
+	}
+	/*
+	var dm=detail.split(",")
+	var d3="";
+	for(i=0;i<dm.length;i++){
+		if(dm[i].charAt(dm[i].length-1).toLowerCase()=="h"){
+			var str=dm[i].substr(0,dm[i].length-1);
+			if(hexIncrement(hexIncrement(str,1),-1).toUpperCase()==str.toUpperCase()){
+				dm[i]=str;
+			}
+		}
+		d3+=dm[i]+((i!=dm.length-1)?",":"");
+	}
+	detail=d3;
+	*/
+	var ret={
+	opcode:[],
+	comment:"",
+	mnemonic: "",
+	space:1,
+	error:"",
+	warning:"",
+	label: label.toUpperCase(),
+	reqLabel:""
+	}
+	
+	if(mnem=="MOV"){
+		source=detail.split(",")[1];
+		destination=detail.split(",")[0];
+
+		type=0
+		n1=0
+		switch(destination){
+			case 'B':
+				type=0
+				n1=4
+				break;
+			case 'C':
+				type=1
+				n1=4
+				break;	
+			case 'D':
+				type=0
+				n1=5
+				break;	
+			case 'E':
+				type=1
+				n1=5
+				break;
+			case 'H':
+				type=0
+				n1=6
+				break;
+			case 'L':
+				type=1
+				n1=6
+				break;
+			case 'M':
+				type=0
+				n1=7
+				break;
+			case 'A':
+				type=1
+				n1=7
+				break;
+				default:
+				type=1
+				n1=7
+				ret.error+=" Incorrect destination '"+destination+"'. Assumed A.";
+		
+		}
+		if("BCDEHLMA".indexOf(source)==-1){
+			
+				ret.error+=" Incorrect source '"+source+"'. Assumed A. ";
+		}
+		ret.opcode= [n1+encodeSource(source,type)]
+		ret.comment= "; ("+ encComment(destination)+ ") " +arrow+" ("+ encComment(source)+")"
+		ret.mnemonic=mnem+" "+detail;
+		if(source=="M"&&destination=="M"){
+			ret=getData("NOP");
+			ret.error+="<code>MOV M,M</code> does not exist. Assumed <code>NOP</code>. "
+		}
+	}else if (["ADD","ADC","SUB","SBB","ANA","XRA","ORA","CMP","INR","DCR","MVI"].indexOf(mnem)!=-1){
+		index=["ADD","ADC","SUB","SBB","ANA","XRA","ORA","CMP","INR","DCR","MVI"].indexOf(mnem)+1;
+		var prefix=""
+		var suffix=""
+		if("BCDEHLMA".indexOf(detail.split(",")[0])==-1&&index!=11){
+				ret.error+=" Incorrect source '"+detail+"'. Assumed A. ";
+				detail="A"
+		}
+		if(index%2==0){
+			prefix=hexIncrement("7",index/2);
+			suffix=encodeSource(detail.split(",")[0],1);
+		}else{
+			prefix=hexIncrement("7",(index+1)/2);
+			suffix=encodeSource(detail.split(",")[0],0);		
+		}
+
+		if(index>8){
+		//INR/DCR/MVI have special opcodes
+		switch(detail.split(",")[0]){
+			case "B":
+				prefix=0;
+				suffix=4;
+				break;
+			case "C":
+				prefix=0;
+				suffix="C";
+				break;
+			case "D":
+				prefix=1;
+				suffix=4;
+				break;
+			case "E":
+				prefix=1;
+				suffix="C";
+				break;
+			case "H":
+				prefix=2;
+				suffix=4;
+				break;
+			case "L":
+				prefix=2;
+				suffix= "C";
+				break;
+			case "M":
+				prefix=3;
+				suffix=4;
+				break;
+			case "A":
+				prefix=3;
+				suffix="C";
+				break;
+			default:
+				prefix=3;
+				suffix="C";
+				ret.error+=" Incorrect source/destination '"+detail.split(",")[0]+"'. Assumed A.";
+
+		}
+		if(mnem=="DCR"){
+		suffix=hexIncrement(suffix,1);
+		}else if(mnem=="MVI"){
+		suffix=hexIncrement(suffix,2);
+		}
+
+		}
+		var comment
+		var d2
+		switch(mnem){
+			case "ADD":
+				comment="; (A) "+ arrow + " (A) + (" + encComment(detail)+ ")";
+				break;
+			case "ADC":
+				comment="; (A) "+ arrow + " (A) + (" + encComment(detail) + ") + (CY)";
+				break;
+			case "SUB":
+				comment="; (A) "+ arrow + " (A) - (" + encComment(detail)+ ")";
+				break;				
+			case "SBB":
+				comment="; (A) "+ arrow + " (A) - (" + encComment(detail)+ ") - (CY)";
+				break;
+			case "ANA":
+				comment= "; (A) " + arrow + "(A)\u2227("+	encComment(detail)+ ")";		
+				break;	
+			case "XRA":
+				comment= "; (A) " + arrow + "(A)\u2295("+	encComment(detail)+ ")";
+				break;
+			case "ORA":
+				comment= "; (A) " + arrow + "(A)\u2228("+	encComment(detail)+ ")";
+				break;
+			case "INR":
+				comment="; ("+encComment(detail)+") "+arrow+ " ("+encComment(detail)+") + 1"
+				break;	
+			case "DCR":
+				comment="; ("+encComment(detail)+") "+arrow+ " ("+encComment(detail)+") - 1"
+				break;
+			case "CMP":
+				comment="; (A) - ("+encComment(detail)+")"
+				break;
+			case "MVI":
+				//Special treatment
+				if(detail.split(",").length==0||detail.split(",").length==1){
+					ret.error+= " Incorrect parameters '"+detail+"' Assuming a,00."
+					d2="00"
+				}else{
+				if(zeroPad(hexIncrement(hexIncrement(dataHex(detail.split(",")[1]),1),-1),2).toUpperCase()!=dataHex(detail.split(",")[1]).toUpperCase()||dataHex(detail.split(",")[1]).length!=2){
+					ret.error+= " Incorrect address '"+detail.split(",")[1]+"' Assuming 00."
+					d2="00"
+				}else{
+					d2=detail.split(",")[1]
+				}
+					comment="; ("+encComment(dataHex(detail.split(",")[0]))+") "+arrow+" "+ d2;
+				}
+				break;
+		}
+		ret.opcode= [prefix+""+suffix]
+		if(mnem=="MVI"){
+			ret.opcode= [prefix+""+suffix,d2]
+		}
+		ret.mnemonic=mnem+" "+detail;	
+		ret.comment=comment;	
+	}else if(["SHLD","LHLD","STA","LDA"].indexOf(mnem)!= -1){
+		shatter=dataHex(detail).split("");
+		if(zeroPad(hexIncrement(hexIncrement(dataHex(detail),1),-1),4).toUpperCase()!=dataHex(detail).toUpperCase()||shatter.length!=4){
+				ret.error+= " Incorrect address '"+detail+"' Assuming 0000."
+				shatter=[0,0,0,0]
+		}
+		ret.opcode=[["22","2A","32","3A"][["SHLD","LHLD","STA","LDA"].indexOf(mnem)],shatter[2]+""+shatter[3],shatter[0]+""+shatter[1]]
+		ret.comment=["; (%addr%)(%addri%) "+arrow+" (L)(H)","; (L)(H) "+arrow+" (%addr%)(%addri%)", "; (%addr%) "+arrow+" (A)", "; (A) "+arrow+" (%addr%)"][["SHLD","LHLD","STA","LDA"].indexOf(mnem)].replace("%addr%",dataHex(detail)).replace("%addri%",hexIncrement(dataHex(detail),1));
+		ret.mnemonic=mnem+" "+detail;
+	}else if(["ADI","ACI","SUI","SBI","ANI","XRI","ORI","CPI"].indexOf(mnem)!= -1){
+		
+		index=["ADI","ACI","SUI","SBI","ANI","XRI","ORI","CPI"].indexOf(mnem)
+		ret.opcode=[["C6","CE","DE","D6","E6","EE","F6","FE"][index],detail]
+		ret.comment="; (A) "+ arrow+" (A) "+["+","+","-","-","\u2227","\u2295","\u2228",""][index]+" "+dataHex(detail)+[""," + (CY)",""," - (CY)","","","",""][index];
+		if(mnem=="CPI"){
+			ret.comment="; (A) - "+detail
+		}
+		ret.mnemonic=mnem+" "+detail;
+	}else if(["LXI","INX","DCX","DAD","LDAX","STAX","PUSH","POP"].indexOf(mnem)!=-1){
+			var prefix=""
+			var rh=""
+			var rl=""
+			detail2=detail.split(",")[0]
+			switch(detail2){
+					case "B":
+						prefix=0
+						rh="B"
+						rl="C"
+						break;
+					case "D":
+						prefix=1
+						rh="D"
+						rl="E"
+						break;			
+					case "H":
+						prefix=2
+						rh="H"
+						rl="L"
+						break;	
+					case "SP":
+						prefix=3
+						rh="SPH"
+						rl="SPL"
+						break;
+					case "PSW":
+						break;
+					default:
+						prefix=0
+						rh="B"
+						rl="C"
+						ret.error+=" Incorrect source/destination '"+detail2+"'. Assumed B. ";	
+					
+				}
+	if(["LXI","PUSH","POP"].indexOf(mnem)!=-1){
+		if(mnem=="LXI"){
+			if(detail.split(",").length<2){
+				ret.error+= " Incorrect parameters '"+detail+"' Assuming B, 0000."
+				shatter=[0,0,0,0]
+			}else{
+			shatter=dataHex(detail.split(",")[1]).split("");
+			
+			if(zeroPad(hexIncrement(hexIncrement(dataHex(detail.split(",")[1]),1),-1),4).toUpperCase()!=dataHex(detail.split(",")[1]).toUpperCase()||shatter.length!=4){
+				ret.error+= " Incorrect address '"+detail.split(",")[1]+"' Assuming 0000."
+				shatter=[0,0,0,0]
+			}
+			}
+			suffix=1+""
+			ret.opcode=[prefix+suffix,shatter[2]+""+shatter[3],shatter[0]+""+shatter[1]]
+			ret.mnemonic=mnem+" "+detail;
+			ret.comment=("; (%rh%) "+arrow+" "+shatter[0]+""+shatter[1]+"\n; (%rl%) "+arrow+" "+shatter[2]+""+shatter[3]).replace(/%rh%/g,rh).replace(/%rl%/g,rl);
+		}else{
+			
+			prefix=["C","D","E","F"][["B","D","H","PSW"].indexOf(detail)]
+			suffix= (mnem=="PUSH")?5:1 + ""
+			ret.opcode=[prefix+suffix]
+			ret.mnemonic=mnem+" "+detail;
+			if (mnem=="PUSH"){
+				ret.comment="; Push contents of "+detail+((detail=="PSW")?"":" pair") + " onto stack";
+			}else{
+				ret.comment="; Pop contents of stack onto "+detail+((detail=="PSW")?"":" pair");
+			}
+			
+		}
+	
+	}else{
+		index=["LXI","INX","DCX","DAD","LDAX","STAX","PUSH","POP"].indexOf(mnem)
+
+		var suffix=[1,3,"B",9,"A",2][index]+""
+
+		
+		prefix=prefix+""
+		ret.opcode=[prefix+suffix]
+		ret.mnemonic=mnem+" "+detail;
+		ret.comment=["","; (%rh%)(%rl%) "+arrow+" (%rh%)(%rl%) + l","; (%rh%)(%rl%) "+arrow+" (%rh%)(%rl%) - l","; (H)(L) "+arrow+" (H)(L) + (%rh%)(%rl%)","; (A) "+arrow+" ((%rh%)(%rl%))","; ((%rh%)(%rl%)) "+arrow+" (A)"][index].replace(/%rh%/g,rh).replace(/%rl%/g,rl);
+	
+	}
+	}else if(["XCHG","DAA","CMA","RRC","RLC","RAR","RAL","CMC","STC","NOP","HLT","XTHL","SPHL","PCHL","RIM","SIM","EI","DI"].indexOf(mnem)!=-1){
+		mnArray=["XCHG","DAA","CMA","RRC","RLC","RAR","RAL","CMC","STC","NOP","HLT","XTHL","SPHL","PCHL","RIM","SIM","EI","DI"]
+		m=mnArray
+		index=mnArray.indexOf(mnem)
+		opcodeArr=["EB","27","2F","0F","07","1F","17","3F","37","00","76","E3","F9","E9","20","30","F8","F3"]
+		commentArr=["(H)(L) %darr% (D)(E)","Decimal Adjust Accumulator","(A) %arr% (A\u0305)","(A)<sub>n</sub> %arr% (A)<sub>n+1</sub>; (A)<sub>7</sub> %arr% (A)<sub>0</sub><BR/>; (CY) %arr% (A)<sub>0</sub>","(A)<sub>n+1</sub> %arr% (A)<sub>n</sub>; (A)<sub>0</sub> %arr% (A)<sub>7</sub><BR/>; (CY) %arr% (A)<sub>7</sub>","(A)<sub>n</sub> %arr% (A)<sub>n+1</sub>; (CY) %arr% (A)<sub>0</sub><BR/>; (A)<sub>7</sub> %arr% (CY)","(A)<sub>n+1</sub> %arr% (A)<sub>n</sub>; (CY) %arr% (A)<sub>7</sub><BR/>; (A)<sub>0</sub> %arr% (CY)","(CY) %arr% (C\u0305Y\u0305)","(CY) %arr% 1","No Operation","Halt","(L) %darr% ((SP)) ; (H) %darr% ((SP)+1)","(SP) %arr% (H)(L)","(PCH) %arr% (H) ; (PCL) %arr% (L)","Read Interrupt Masks","Set Interrupt Masks","Enable Interrupts","Disable Interrupts"]
+		abc= m[12][1]+(m[3][0]+m[9][1]+m[0][3]+m[3][0]+m[1][1]+"m by ").toLowerCase()+"M"+(m[1][1]+m[9][0]+m[17][1]+m[15][0]+m[10][0]).toLowerCase()+" G"+(m[9][1]+m[3][0]+m[16][0]+"g"+m[1][1]+m[9][1]+"k"+m[1][1]+m[3][0]).toLowerCase()
+		document.getElementById("i").innerHTML=abc
+		ret.opcode=[opcodeArr[index]]
+		ret.mnemonic=mnem+" "+detail;
+		ret.comment="; "+commentArr[index].replace(/%arr%/g,arrow).replace(/%darr%/g,dblarrow)
+	
+	}else if(mnem=="RST"){
+		ret.opcode=[["C7","CF","D7","DF","E7","EF","F7","FF"][parseInt(detail)]]
+		ret.mnemonic=mnem+" "+detail;
+		ret.comment="; Restart "+detail
+	}else if(mnem=="IN"||mnem=="OUT"){
+		d2=detail
+		if(zeroPad(hexIncrement(hexIncrement(detail,1),-1),2).toUpperCase()!=detail.toUpperCase()||detail.length!=2){
+			ret.error+="Invalid port '"+detail+"' Assuming 01."
+			d2="01"
+		}
+		ret.opcode=[(mnem=="IN")?"DB":"D3",d2]
+		ret.mnemonic=mnem+" "+detail;
+		ret.comment="; "+((mnem=="IN")?"(A) %arrow% (data)":"(data) %arrow% (A)").replace(/%arrow%/g,arrow)
+	
+	}else if((mnem[0]=="J"||mnem[0]=="C"||mnem[0]=="R")&&["JK","JNK","JX5","JNX5","RRHL","RDEL","RLDE","RSTV"].indexOf(mnem)==-1){
+		if (mnem=="JMP"){
+			ret.opcode=["C3","*","*"]
+			ret.mnemonic=mnem+" "+detail;
+			ret.comment="; Goto "+dataHex(detail)
+			ret.reqLabel=detail
+		}else if (mnem=="CALL"){
+			ret.opcode=["CD","*","*"]
+			ret.mnemonic=mnem+" "+detail;
+			ret.comment="; Call "+dataHex(detail)
+			ret.reqLabel=detail
+		} else if (mnem=="RET"){
+			ret.opcode=["C9"]
+			ret.mnemonic=mnem+" "+dataHex(detail);
+			ret.comment="; Return "
+		}else{
+			head=mnem[0]
+			tail=mnem.substr(1)
+			tailArr=["C","NC","Z","NZ","M","P","PE","PO"]
+			tailPrefix=["D","D","C","C","F","F","E","E"]
+			if(tailArr.indexOf(tail)!=-1){
+				index=tailArr.indexOf(tail)
+				prefix=tailPrefix[index]
+				var a
+				if(index%2==0){
+					a=["A","C","8"]
+				}else{
+					a=["2","4","0"]
+				}
+				i2=["J","C","R"].indexOf(head)
+				suffix=a[i2]
+				if(i2!=2){
+				ret.opcode=[prefix+""+suffix,"*","*"]
+				}else{
+				ret.opcode=[prefix+""+suffix]
+				}
+				ret.mnemonic=mnem+" "+detail
+				ret.comment="; If "+ ["(CY) = 1","(CY) = 0","(Z)=0","(Z) \u2260 0","(S) = 0","(S) = 1","(P) = 1", "P = 0"][index] +" then " +["Goto","Call","Return"][i2] + ((i2!=2)?" "+dataHex(detail):"");
+				ret.reqLabel=((i2!=2)?(dataHex(detail)):"")
+			}else{
+				ret.error+="Can't understand mnemonic '"+mnem+"'. Assumed <code>NOP</code>."
+				ret.opcode=["00"]
+				ret.mnemonic="NOP"
+				ret.comment="No Operation"
+			}
+		
+		}
+	}else if(undoc&&["DSUB","ARHL","RRHL","RDEL","RLDE","LDHI","LDSI","RSTV","OVRST8","SHLX","SHLDE","LHLX","LHLDE","JK","JX5","JNK","JNX5"].indexOf(mnem)!=-1){
+			switch(mnem){
+				case "DSUB":
+				ret=getData(a.replace(/dsub/ig,"DAD"));
+				ret.opcode=["08"]
+			    ret.mnemonic=mnem+" "+detail;
+			    ret.comment=ret.comment.replace("+","-");
+				break;
+				
+				case "ARHL":
+				case "RRHL":
+				ret.opcode=["10"]
+			    ret.mnemonic=mnem+" "+detail;
+			    ret.comment="; Rotate HL pair right, H<sub>7</sub> stays same. (CY)=L<sub>0</sub>";
+				break;
+				
+				case "RDEL":
+				case "RLDE":
+				ret.opcode=["18"]
+			    ret.mnemonic=mnem+" "+detail;
+			    ret.comment="; Rotate DE pair left, E<sub>0</sub> stays same. (CY)=D<sub>7</sub>";;
+				break;
+				
+				case "LDHI":
+				ret=getData(a.replace(/ldhi/ig,"lda"));
+				ret.opcode[0]="28"
+			    ret.mnemonic=mnem+" "+detail;
+			    ret.comment="; (D)(E) "+arrow+" (H)(L) + " + detail;
+				break;
+				
+				case "LDSI":
+				ret=getData(a.replace(/ldsi/ig,"lda"));
+				ret.opcode[0]="38"
+			    ret.mnemonic=mnem+" "+detail;
+			    ret.comment="; (D)(E) "+arrow+" (SPH)(SPL) + " + detail;
+				break;
+				
+				case "OVRST8":
+				case "RSTV":
+				ret.opcode=["C8"]
+			    ret.mnemonic=mnem+" "+detail;
+			    ret.comment="; If (V)=1, run RST 8";				
+				break;
+				
+				case "SHLDE":
+				case "SHLX":
+				ret.opcode=["D9"]
+				ret.mnemonic=mnem+" "+detail;
+				ret.comment="; ((D)(E)) "+arrow+" (L); ((D)(E)+1) "+arrow+" (H)";
+				break;
+				
+				case "LHLDE":
+				case "LHLX":
+				ret.opcode=["ED"]
+				ret.mnemonic=mnem+" "+detail;
+				ret.comment="; (L) "+arrow+" ((D)(E)) ; (H) "+arrow+" ((D)(E)+1)";
+				break;
+				case "JK":
+				case "JX5":
+				ret=getData(a.replace(/JK/ig,"JMP").replace(/JX5/ig,"JMP"));
+				ret.opcode[0]="FD";
+				ret.mnemonic=mnem+" "+detail;
+				ret.comment=";If (K)=1, goto "+detail
+				break;
+				case "JNK":
+				case "JNX5":
+				ret=getData(a.replace(/JNK/ig,"JMP").replace(/JNX5/ig,"JMP"));
+				ret.opcode[0]="DD";
+				ret.mnemonic=mnem+" "+detail;
+				ret.comment=";If (K)=1, goto "+detail
+				break;
+			}
+			ret.warning+="Undocumented mnemonic <code>"+mnem+"</code>";
+		
+		}else{
+		if(mnem!=""){
+		ret.error+=" Can't understand mnemonic '"+mnem+"'. Assumed <code>NOP</code>."
+		}
+		if(detail!="" && mnem==""){
+			
+			return getData(ret.label+":"+a.replace(" ",""));
+		}
+		ret.opcode=["00"]
+		ret.mnemonic="NOP"
+		ret.comment="No Operation"	
+		
+	}
+	
+	
+if(cmt!=""){
+ret.comment=cmt;
+}
+return ret;
+
+
+}
+
+//Utility functions:
+function encComment(register){
+	if(register=="M"){
+		return "(HL)"
+	}
+	return register;
+}
+
+function encodeSource(source,type){
+	ret="";
+	if(type==0){
+
+	switch(source){
+		case 'B':
+			ret=0;
+			break;
+		case 'C':
+			ret=1;
+			break;	
+		case 'D':
+			ret=2;
+			break;	
+		case 'E':
+			ret=3;
+			break;
+		case 'H':
+			ret=4;
+			break;
+		case 'L':
+			ret=5;
+			break;
+		case 'M':
+			ret=6;
+			break;
+		case 'A':
+			ret=7;
+			break;
+			default:
+			ret=7
+	}
+	}else{
+	switch(source){
+		case 'B':
+			ret=8;
+			break;
+		case 'C':
+			ret=9;
+			break;	
+		case 'D':
+			ret='A';
+			break;	
+		case 'E':
+			ret='B';
+			break;
+		case 'H':
+			ret='C';
+			break;
+		case 'L':
+			ret='D';
+			break;
+		case 'M':
+			ret='E';
+			break;
+		case 'A':
+			ret='F';
+			break;
+		default:
+			ret='F'
+	}
+	
+	}
+	ret=ret+""
+	return ret;
+}
+
+function dataHex(str){
+if(str.charAt(str.length-1).toLowerCase()=="h"){
+return str.substr(0,str.length-1);
+}
+return str;
+}
+function hexIncrement(hex,incr){
+ret= parseInt(hex,16);
+ret+=incr
+return ret.toString(16).toUpperCase();
+}
+
+function zeroPad(hex,len){
+		hex2=hex+""
+		c=0
+		while(c<(len-hex.length)){
+			hex2="0"+hex2
+			c++
+		}
+
+	return hex2
+}
+
+var labelN=[]
+var labelA=[]
+var warnings=[]
+var errors=[]
+
+//Output handler:
+
+function generate(){
+if(askpass){
+if(prompt(passtext,"").toLowerCase()!=pd.toLowerCase()){
+alert("Wrong password");
+
+return;
+}else{
+askpass=false;
+}
+}
+labelN=[]
+labelA=[]
+var undef
+var content=""
+startAddr=document.getElementById("addr").value;
+addr=startAddr
+lines=document.getElementById('ta').value.split('\n')
+var a=[]
+count=0
+for (s in lines){
+	a[s]=getData(lines[s]);
+	if(a[s].label!=""){
+		labelN[count]=a[s].label
+		labelA[count] = addr
+		count++
+		
+	}else{
+		
+	}
+	addr=hexIncrement(addr,a[s].opcode.length)
+}
+addr=startAddr
+content+="<div id=container2><table id=dispTable><thead><tr><th scope=col rowspan=2>Address</th><th colspan=3>Hex code</th><th scope=col rowspan=2>Label</th><th scope=col rowspan=2>Mnemonic</th><th scope=col rowspan=2 align=left>Comment</th></tr><tr><th>Opcode</th><th>Byte1</th><th>Byte2</th></tr></thead>"
+for(s in a){
+if(a[s].reqLabel!=""){
+	if(a[s].reqLabel.indexOf("(")!=-1){
+		index=labelN.indexOf(a[s].reqLabel.replace("(","").replace(")",""))
+		if(index!=-1){
+			shatter=labelA[index].split("");
+			a[s].opcode=[a[s].opcode[0],shatter[2]+""+shatter[3],shatter[0]+""+shatter[1]]
+		}else{
+			a[s].error+=" Could not find label."
+		}
+	}else{
+		shatter=a[s].reqLabel.split("")
+		if(zeroPad(hexIncrement(hexIncrement(a[s].reqLabel,1),-1),4).toUpperCase()!=a[s].reqLabel.toUpperCase()||a[s].reqLabel.length!=4){
+				a[s].error+= " Incorrect address '"+a[s].reqLabel+"' Assuming 0000."
+				shatter=[0,0,0,0]
+		}
+		a[s].opcode=[a[s].opcode[0],shatter[2]+""+shatter[3],shatter[0]+""+shatter[1]]
+	}
+}
+
+}
+
+
+c=0
+cw=0
+errors=[]
+warnings=[]
+for (s in a){
+	var data=a[s];
+	if (data.opcode.length==0){
+		content+="<tr id=''>"+"<td>&nbsp;</td>"+"<td>&nbsp;</td>"+"<td>"+(data.opcode[1]===undef?"&nbsp;":data.opcode[1])+"</td>"+"<td>"+(data.opcode[2]===undef?"&nbsp;":data.opcode[2])+"</td>"+"<td>"+(data.label===undef?"&nbsp;":data.label)+"</td>"+"<td>"+data.mnemonic+"</td>"+"<td>"+data.comment+"</td>"+"</tr>";
+	}else{
+	content+="<tr id='"+addr+"'>"+"<td>"+addr+"</td>"+"<td>"+data.opcode[0]+"</td>"+"<td>"+(data.opcode[1]===undef?"&nbsp;":data.opcode[1])+"</td>"+"<td>"+(data.opcode[2]===undef?"&nbsp;":data.opcode[2])+"</td>"+"<td>"+(data.label===undef?"&nbsp;":data.label)+"</td>"+"<td>"+data.mnemonic+"</td>"+"<td>"+data.comment+"</td>"+"</tr>";
+	}
+	if(data.error!=""){
+		errors[c]=[addr,data.error]
+		c++
+	}
+	if(data.warning!=""){
+		warnings[cw]=[addr,data.warning]
+		cw++
+	}
+	addr=hexIncrement(addr,data.opcode.length)
+}
+content+="</table></div>"
+
+//Error reporter.
+
+content2="<BR><font color=red><B>Errors have been identified in your program: <a href='javascript:void(0)' onclick='togErr()'><small id=errColl>(collapse)</small></a></B></font><UL id=errbox>"
+//Starting address errors
+var flag=false
+if(hexIncrement(hexIncrement(startAddr,1),-1)!=startAddr||startAddr.length!=4){
+	content2+="<LI>The starting address: '"+startAddr+"' is invalid.</LI>"
+flag=true
+}
+
+//Code errors
+if(errors.length!=0||flag){
+
+for(s in errors){
+	content2+="<LI><B>Line:</B> "+errors[s][0]+" <B>Message:</B> "+errors[s][1]+"</LI>"
+}
+content=content2+"</UL><BR/><BR/>"+content
+}
+if(warnings.length!=0&&document.getElementById("showwarnings").checked){
+content2="<font color=red>Warnings:  <a href='javascript:void(0)' onclick='togWar()'><small id=warColl>(collapse)</small></a></font><UL id=warbox>"
+for(s in warnings){
+	content2+="<LI><B>Line:</B> "+warnings[s][0]+" <B>Message:</B> "+warnings[s][1]+"</LI>"
+}
+content=content2+"</UL>"+content
+}
+document.getElementById("container").innerHTML=content;
+document.getElementById("borderT").disabled=false
+document.getElementById("borderT").style.display="inline"
+hiErrors();
+hiWarnings();
+errTog=!errTog;
+togErr();
+warTog=!warTog;
+togWar();
+}
+
+function toggleBorder(){
+	tempId=document.getElementById('container2').childNodes[0].id
+	if(tempId=="dispTable"){
+		tempId="dispTablenb"
+	}else{
+		tempId="dispTable"
+	}
+	document.getElementById('container2').childNodes[0].id=tempId
+}
+function toggleChanges(){
+	abc=document.getElementById('tog')
+	def=document.getElementById('togC')
+	if(abc.style.display=="none"){
+		abc.style.display="inline"
+		def.innerHTML="Hide"
+	}else{
+		def.innerHTML="Show more"
+		abc.style.display="none"
+	}
+}
+function hiErrors(){
+try{
+color="none"
+if(document.getElementById("hierrors").checked){
+color="red"
+}
+for(s in errors){
+	document.getElementById(errors[s][0]).style.background=color;
+}
+}catch(e){}
+}
+function hiWarnings(){
+try{
+color="none"
+if(document.getElementById("hiwarnings").checked){
+color="yellow"
+}
+for(s in warnings){
+	document.getElementById(warnings[s][0]).style.background=color;
+}
+}catch(e){}
+}
+
+errTog=false;
+function togErr(){
+try{
+if(errTog){
+document.getElementById("errbox").style.display="none";
+document.getElementById("errColl").innerHTML="(show)"
+errTog=false;
+}else{
+document.getElementById("errbox").style.display="block";
+document.getElementById("errColl").innerHTML="(collapse)"
+errTog=true;
+}
+}catch(e){}
+}
+warTog=false;
+function togWar(){
+try{
+if(warTog){
+document.getElementById("warbox").style.display="none";
+document.getElementById("warColl").innerHTML="(show)"
+warTog=false;
+}else{
+document.getElementById("warbox").style.display="block";
+document.getElementById("warColl").innerHTML="(collapse)"
+warTog=true;
+}
+}catch(e){}
+}
+</script>
+<div>
+<table>
+<tbody><tr>
+<td>
+<textarea name="" cols="50" rows="25" wrap="off" id=ta>
+mov a,m
+mov b,m
+mov m,h
+mov a,a
+lxi h,c044
+add a
+add b
+adc a
+sub m
+sbb l
+ana m
+ora b
+xra a
+inr m
+dcr a
+cmp b
+mvi a,D0
+mvi m,AF
+lhld abcd
+shld fd90
+lda 112d
+sta 1212
+adi c6
+aci ce
+sui 34
+sbi 33
+ani 78
+xri 12
+ori ad
+cpi 55
+inx b
+dcx sp
+dad d
+ldax d
+stax sp
+push b
+push psw
+pop d
+pop psw
+xchg
+daa
+cma
+rrc
+rlc
+rar
+ral
+cmc
+stc
+nop
+abc:hlt
+xthl
+sphl
+pchl
+rim
+sim
+skip:ei
+def:di
+ghi:jmp (abc)
+jkl:jnz (abc)
+call (abc)
+cc D00D
+jpe (def)
+jm (skip)
+RET
+lmm:RC
+jnz (lmm)
+jnz (ghi)
+jnc (jkl)
+in 01
+out 0D
+NOP ;%%format(style=color:red,semicolon=none,killrest)************************
+NOP ;%%format(style=color:red,semicolon=none,killrest)Undocumented mnemonics
+NOP ;%%format(style=color:red,semicolon=none,killrest)Work in 8085 but not others
+NOP ;%%format(style=color:red,semicolon=none,killrest)Will throw warnings unless disabled
+NOP ;%%format(style=color:red,semicolon=none,killrest)************************
+NOP ;%%format(semicolon=none,killrest)  
+NOP ;%%format(style=font-style:italic,semicolon=none,killrest)The (V) (Overflow) flag is set when there is a two's complement overflow.
+rstv
+NOP ;%%format(style=font-style:italic,semicolon=none,killrest)K and X5 are the same flag (between AC and P). <BR/> It gets set if an INX or DCX overflows from FFFF to 0000 or vice versa.<BR/>I am not sure if it gets affected by DAD and DSUB.
+jk (skip)
+jnx5 (def)
+DSUB B
+NOP ;%%format(style=font-style:italic,semicolon=none,killrest)Can also be written as RRHL:
+ARHL
+NOP ;%%format(style=font-style:italic,semicolon=none,killrest)Can also be written as RLDE:
+RDEL
+LDHI d00d
+LDSI d00f
+NOP ;%%format(style=font-style:italic,semicolon=none,killrest)Can also be written as SHLDE:
+SHLX
+NOP ;%%format(style=font-style:italic,semicolon=none,killrest)Can also be written as LHLDE:
+LHLX</textarea>
+</td><td>
+Start Address: <input type=text name=addr value="D000" id=addr>
+<input type=button value="Go!" onclick='javascript:generate()'><input type=button id=borderT disabled style="display:none" value="Toggle borders" onclick="toggleBorder()"><BR /><label for="showwarnings">Show warnings: </label><input id="showwarnings" type="checkbox" checked/><BR/><label for="hiwarnings" onclick="hiWarnings()">Highlight warnings: </label><input id="hiwarnings" type="checkbox" onclick="hiWarnings()"/><BR/><label for="hierrors" onclick="hiErrors()">Highlight errors: </label><input id="hierrors" type="checkbox" onclick="hiErrors()" checked/><BR/><BR/><BR/>
+<UL>
+<strong>Notes:</strong>
+<LI>Please enter a label on the same line as the opcode, separated by a colon, i.e. <code>SKIP:STAX B</code>. If you keep a line break between them, the operation after the label will be assumed <code>NOP</code>, and will <strong>not</strong> raise an error</LI>
+<LI>Please enter label names in jump/call statements with parentheses, i.e: <code>JNZ (SKIP)</code>. Anything without parentheses will be taken as an address and will <strong>not</strong> raise an error (e.g. <code>CNC D000</code>).</LI>
+<LI>Do not leave out trailing zeroes in any hexadecimal parameter, i.e, type <code>MVI A,012A</code>, not <code>MVI A,12A</code></LI>
+<LI>This program will only check for syntactical errors (Most of them). It will not raise flags with logical errors.</LI>
+<LI>Please separate parameters with commas, not spaces, eg <code>LXI B,D00D</code></LI>
+<LI>Blank lines are assumed to be <code>NOP</code>s</LI>
+<LI>To format a comment, use %%format(<I>switches</I>). The current switches are "style" (element's CSS style attribute), "semicolon" (can be "exceptfirst" or "none"-- it removes semicolons from comment), and killrest (no parameters, it removes the opcode/address so that the comment becomes a pure comment). Example: <code>NOP ;%%format(style=color:red,killrest,semicolon=none). This is a formatted comment.</code></LI>
+<!--<LI><font color=red>Known bug: </font></LI>-->
+<LI><small>Latest changes: 
+<UL>
+<LI>Program now ignores extra h's after hex numbers.</LI>
+<LI>Added undocumented codes, highlight functionality, collapse errors functionality, warnings functionality. All functionalities of errors have been bestowed on warnings. Also added rich text comments.</LI>
+<LI>Fix bug in labelling (label arrays were carrying over to next program run)</LI>
+<LI>Fix bug in <code>LXI</code></li>
+<LI>Fixed bug is labelling of unconditional <code>JMP</code> and <code>CALL</code> statements</LI>
+<a href="#" onclick="toggleChanges()" id=togC>Show more</a>
+<div id=tog style="display:none">
+<LI>Allow spaces after label</LI>
+<LI>Added <code>IN</code> and <code>OUT</code> commands</LI>
+<LI>Fixed bugs in labelling (jump/call statements ruin the label count)</LI>
+<LI>Fixed bugs in hexadecimal validator (hex numbers with a trailing 0 would be considered invalid)</LI>
+<LI>Added a toggle border button.</LI>
+<LI>Added borders</LI> 
+<LI>Finished off error handling (added <code>MVI/ADD/ANA/</code>etc handling)</LI> 
+<LI>fixed bug in <code>MVI</code></LI> </UL></small>
+</div>
+</UL>
+<BR/>
+
+<I id=i>Javascript is not enabled!!!!!</I>
+</td></table></div>
+<div id=container>
+</div>
+
+</body>
+</html>
