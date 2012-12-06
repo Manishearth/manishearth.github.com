@@ -5,9 +5,6 @@
 */
 
 
-
-
-
 //TODO: 
 // add capabilities to recognise stuff like 1/sin(abc) or 1/sqrt(abc) and tokenize it correctly
 // deal with 1/ab-->(1/a)b without breaking m_0^2/2 and 1/2/2/2
@@ -109,6 +106,9 @@ function TypedMath(text,hasparen){
 	
 }
 
+
+
+TypedMath.collectN=true; // for sqrts and sub/supscripts, all alphanumeric characters till a space are collected. So 1/ab-->1/(ab)
 
 
 /** TypedMath.types
@@ -234,9 +234,17 @@ TypedMath.prototype.compile=function(){
 							var CT1=this.objects[i+1].compiledText; //shortcut
 							if(CT1.search(/[A-Za-z0-9]/)==0){ //if it starts with letters or digits, then put the letters/digits(as many as possible) into the su(p|b)script 
 															  //and keep the rest outside. This means that "a^xyz" displays as "a^(xyz)", but "a^xy z" displays "a^(xy) z"
-								var subscr=CT1.match(/[A-Za-z0-9]/)[0];//the sub/sup script
-								CT1=CT1.replace(/[A-Za-z0-9]/,""); //we've extracted it, now remove it from the string (first occurrence only, no 'g' modifier)
-								CT=CT.replace("%n%",subscr); //replace placeholder with su(p|b)script
+								var subscr;
+
+                                if(TypedMath.collectN){
+                                    subscr=CT1.match(/[A-Za-z0-9]+/)[0];//the sub/sup script
+                                    CT1=CT1.replace(/[A-Za-z0-9]+/,""); //we've extracted it, now remove it from the string  ('+' modifier for all chars)
+                                }else{
+                                    subscr=CT1.match(/[A-Za-z0-9]/)[0];//the sub/sup script
+                                    CT1=CT1.replace(/[A-Za-z0-9]/,""); //we've extracted it, now remove it from the string (first char only, no +)
+						        
+                                }
+                                CT=CT.replace("%n%",subscr); //replace placeholder with su(p|b)script
 								CT=CT.replace(/%([\{\}])%/ig,(subscr.length==1&&(!o.reqPN[3]||subscr.match(/\d/)))?"":"$1"); //if the su(p|b)script/sqrt is only a character long, and the thingy can accept characters without needing braces OR the character is a digit ("\sqrt2" works), then remove the braces for neatness
 								CT+=CT1;
 							}else{
